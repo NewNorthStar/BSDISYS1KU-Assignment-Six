@@ -58,6 +58,8 @@ In the chosen implementation, goroutines are employed in various ways. In \textt
 \bigbreak \noindent Goroutines are used extensively to run remote procedure calls. Once a listener is connected and is serving a registered gRPC service, incoming calls will create goroutines to run the procedures defined by the server interface. This interface defines a set of methods for responding to remote procedure calls. 
 
 \subsection{Channels}
+Channels are fundamental to asynchronous routines Go. Fundamentally these are FIFO blocking queues allowing routines to send and receive data. 
+
 In the chosen implementation, channels are used in various locations to provide means of communication. In the \texttt{api.go} of the Raft library, Raft nodes utilize several channels, for a variety of purposes, including:
 \begin{itemize}
     \item \textbf{applyCh}, which sends logs to the main goroutine for commitment and updates to the FSM(finite state machine).
