@@ -7,6 +7,7 @@
 \usepackage{amssymb}
 \usepackage{pgf-umlsd}
 \usepackage{listings}
+\usepackage[hidelinks]{hyperref}
 
 % Allows the system logs to be shown verbatim with line wrapping.
 % https://tex.stackexchange.com/questions/144979/wrap-lines-in-verbatim#:~:text=One%20way%20would%20be%20to%20add%20the%20listings,breaklines%3Dtrue%20to%20the%20package%20options%2C%20or%20to%20lstset.
@@ -30,7 +31,7 @@ breaklines=true
 
 % Set title, author name and date
 \title{Report on the Hashicorp Raft Implementation}
-\author{rono, ghej, luvr @ ITU, Group ``G.L.R''}
+\author{ghej, luvr, rono @ ITU, Group ``G.L.R''}
 \date{\today}
 
 \begin{document}
@@ -39,6 +40,54 @@ breaklines=true
 
 \tableofcontents
 
+\section*{Links}
+\begin{itemize}
+\item Hashicorp Raft - \url{https://github.com/hashicorp/raft}
+\item Example application - \url{https://github.com/Jille/raft-grpc-example}
+\item Example gRPC Transport implementation - \\\url{https://github.com/Jille/raft-grpc-transport/}
+\end{itemize}
+
 \pagebreak
+% \section{Introduction}
+
+
+\section{Go-specific features}
+\subsection{Goroutines}
+In the chosen implementation, goroutines are employed in various ways. In \texttt{raft.go}, the \texttt{run()} method creates a thread to keep the program running. Then, in \texttt{api.go} the \texttt{NewRaft} method starts \texttt{run()} as a goroutine. It also starts separate goroutines for the FSM, and Snapshot service.
+
+\bigbreak \noindent Goroutines are used extensively to run remote procedure calls. Once a listener is connected and is serving a registered gRPC service, incoming calls will create goroutines to run the procedures defined by the server interface. This interface defines a set of methods for responding to remote procedure calls. 
+
+\subsection{Channels}
+In the chosen implementation, channels are used in various locations to provide means of communication. In the \texttt{api.go} of the Raft library, Raft nodes utilize several channels, for a variety of purposes, including:
+\begin{itemize}
+    \item \textbf{applyCh}, which sends logs to the main goroutine for commitment and updates to the FSM(finite state machine).
+    \item \textbf{leaderCh}, which is used to communicate leadership changes between nodes.
+    \item \textbf{verifyCh}, which verifies with the main goroutine that the node is still the leader.
+    \item \textbf{rpcCh}, which allows a node to receive messages from other nodes in the cluster. The HashiCorp implementation has a Transport interface, which is then augmented by Jilles implementation using grpc(\textit{See Communication methods}).
+\end{itemize}
+\subsection{sync package} % ikke sikker om det burde være overskrift
+In the chosen implementation, various \texttt{sync} components are used to ensure the safety and liveness of the program. In addition to its basic components that we have previously used in our own work, the \texttt{RWMutex} is used extensively. This allows for the shared-read/exclusive-write interlocking also commonly seen on database systems, improving overall concurrency. 
+\section{Communication methods}
+
+As seen in \texttt{transport.go} of the Raft library, the \texttt{Transport} interface defines the communications used to implement Raft. The RPC's for Raft include requests to append entries, calls for voting, timeout announcements. These have been included in the interface as \texttt{AppendEntries, RequestVote \& TimeoutNow}. 
+
+
+\bigbreak
+\noindent Some additions and enhancements have later been added as separate interfaces, in order to not break existing use of the library:
+
+\begin{enumerate}
+    \item \texttt{WithPreVote} solves a robustness issue that is well described here: \url{https://dev.to/tarantool/raft-notalmighty-how-to-make-it-more-robust-3a11}
+    \item \texttt{WithClose} can be added to allow nodes to shutdown cleanly.
+\end{enumerate}
+
+\noindent Included with the example application by Jille was an example of how to satisfy the Transport interface with gRPC, including the added pre-vote feature. In addition to this, the example shows how one must separately implement some service using the log. The example application logs the three longest words that were sent to it. Any of the peers may receive words and can change the longest words retained, with the state being \textit{eventually consistent} among the set of peers. 
+
+\section{Properties guaranteed by the protocol implementation}
+
+The protocol as described in the \texttt{README} of the Raft library follows closely what we have previously seen at the lecture. Instead of logging a series of messages indefinitely however, the log allows the change of some shared states (three words) in such a way, that the system agrees on the order in which changes happened. Initially we imagined the log aspect of Raft as a message log, though this is also possible to implement. 
+
+\bigbreak \noindent To avoid issues with an unbounded log, where a new follower would have to parse a log of infinite size to restore to the current state, a system of snapshots is deployed. This is to minimize the work done to restore a follower to the current state. It is assumed that implementations using this library will have some upper limit on the logged information. 
+
+\bigbreak \noindent This implementation of raft is also able to handle servers joining and leaving, so long as a quorum is available to agree on the new peer set. This part of the implementation is robust to a failure of $\frac{N}{2} - 1$ servers, with $N$ being the quorum size. 
 
 \end{document}
